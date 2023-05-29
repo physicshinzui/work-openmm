@@ -5,7 +5,7 @@ from openmm.unit import *
 import openmm
 from sys import stdout
 import sys
-from myreporter import ForceReporters
+from myreporter import ForceReporter
 
 def save_lastsnapshot(simulation, outname='output'):
     print('Saving the last snapshot...')
@@ -15,9 +15,9 @@ def save_lastsnapshot(simulation, outname='output'):
 def version_check():
     print("openmm version: ", openmm.__version__)
     if openmm.__version__ != "8.0":
-        sys.exit(f"You are using a version that the author did not use.: {openmm.__version__}")
+        sys.exit(f"You are using a version the author did not use.: {openmm.__version__}")
 
-def main():
+def equilibriation():
     version_check()
    
     filename = sys.argv[1]
@@ -54,10 +54,11 @@ def main():
     mdsteps = 1000
     logperiod = 10
     dcdperiod = 10
+    forceperiod = 10
     print("Setting reporters...")
     ## For standard output
     simulation.reporters.append(StateDataReporter(stdout, 
-                                                  10*logperiod, 
+                                                  reportInterval=10*logperiod, 
                                                   step=True,
                                                   time=True, 
                                                   progress=True, 
@@ -81,7 +82,8 @@ def main():
                                 )
     simulation.reporters.append(DCDReporter('traj.dcd', dcdperiod))
     simulation.reporters.append(CheckpointReporter('checkpoint.chk', logperiod, writeState=False)) #.chk is binary, so specific to the envirinment 
-    
+    simulation.reporters.append(ForceReporter('force.dat', forceperiod))
+
     print('Minimizing...')
     simulation.minimizeEnergy(maxIterations=100) #can't I report data for em?
     minpositions = simulation.context.getState(getPositions=True).getPositions()
@@ -99,23 +101,6 @@ def main():
     simulation.loadCheckpoint('checkpoint.chk')
     simulation.step(nptmdsteps)
     save_lastsnapshot(simulation, "npt_eq")
-    
-    #print('Restarting...')
-    #simulation.loadCheckpoint('checkpoint.chk')
-    #simulation.step(1000)
-    #system = forcefield.createSystem(modeller.topology, 
-    #                                 nonbondedMethod=PME, 
-    #                                 nonbondedCutoff=1*nanometer,
-    #                                 constraints=HBonds)
-    #integrator = LangevinMiddleIntegrator(300*kelvin, 1/picosecond, 0.004*picoseconds)
-    #simulation = Simulation(modeller.topology, system, integrator)
-    #simulation.context.setPositions(modeller.positions)
-    #simulation.minimizeEnergy()
-    
-    #simulation.reporters.append(PDBReporter('output.pdb', 1000))
-    #simulation.reporters.append(StateDataReporter(stdout, 1000, step=True,
-    #        potentialEnergy=True, temperature=True))
-    #simulation.step(2000)
 
 if __name__ == "__main__":
-    main()
+    equilibriation()
