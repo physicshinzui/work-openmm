@@ -5,7 +5,7 @@ from openmm.unit import *
 import openmm
 from sys import stdout
 import sys
-from myreporter import ForceReporter
+#from myreporter import ForceReporter
 import argparse
 
 def save_lastsnapshot(simulation, outname='output'):
@@ -24,12 +24,12 @@ class Runner():
         self.watermodel = 'tip3p'
 
     @staticmethod
-    def check_openmm_version():
+    def check_openmm_version() -> None:
         required_version = "8.0"
         if openmm.__version__ != required_version:
             sys.exit(f"You are using a version the author did not use.: {openmm.__version__}")
 
-    def prepare_system(self):    
+    def prepare_system(self) -> None:    
         print('Adding hydrogens...')
         self.modeller.addHydrogens(self.forcefield, pH=7.0)
         
@@ -52,8 +52,9 @@ class Runner():
         #   For clarity, I redefine an integrator in the function of `equilibriate` because thermostat is used at this point.
         self.simulation = Simulation(self.modeller.topology, self.system, self.integrator)
         self.simulation.context.setPositions(self.modeller.positions)  
+        # NOTE: simulation.context is firstly created here. 
 
-    def add_reporters(self, mdsteps=1000, logperiod=10, dcdperiod=10, forceperiod=10):
+    def add_reporters(self, mdsteps=1000, logperiod=10, dcdperiod=10, forceperiod=10) -> None:
         print("Setting reporters...")
         ## For standard output
         self.simulation.reporters.append(StateDataReporter(stdout, 
@@ -85,38 +86,42 @@ class Runner():
         # ^ .chk is binary, so specific to the envirinment where it is created. 
         #self.simulation.reporters.append(ForceReporter('force.dat', forceperiod))
 
-    def minimise(self):
+    def minimise(self) -> None:
         print('Minimizing...')
         self.simulation.minimizeEnergy(maxIterations=100) #can't I report data for em?
         minpositions = self.simulation.context.getState(getPositions=True).getPositions()
         PDBFile.writeFile(self.simulation.topology, minpositions, open('min.pdb', 'w'))
 
-    def equilibriate(self):    
+    def equilibriate(self) -> None:    
         print('Equilibration step via NVT...')
-        nvtmdsteps=100
-        self.integrator = LangevinMiddleIntegrator(300*kelvin, 1/picosecond, 0.004*picoseconds)
+        nvtmdsteps=500
         self.simulation.step(nvtmdsteps)
         save_lastsnapshot(self.simulation, "nvt_eq")
         
-        # TODO: I should check the volume and pressure to confirm NPT actually works. 
         print('Equilibration step via NPT...')
-        nptmdsteps=100
+        nptmdsteps=1000
         self.barostat = MonteCarloBarostat(1.0*bar, 300.0*kelvin, 25) 
         self.system.addForce(self.barostat)
-        self.simulation.loadCheckpoint('checkpoint.chk')
+        
+        self.simulation.context.reinitialize(True)
+        # ^ after addForce, this line is required to reflext the new setting. 
+        # > "if the System or Forces are then modified, the Context does not see the changes."
+        # http://docs.openmm.org/7.2.0/api-python/generated/simtk.openmm.openmm.Context.html#simtk.openmm.openmm.Context.reinitialize
+
         self.simulation.step(nptmdsteps)
         save_lastsnapshot(self.simulation, "npt_eq")
 
     #TODO: abstract this function for NPT NVT ensemble. 
-    def nvt_production(self, nsteps=1000, is_xml_output=True):
+    def nvt_production(self, nsteps=1000, is_xml_output=True) -> None:
         print('Production run...')
         if is_xml_output: # We often do not want all the data that is too large, so this option turns off the full output.
             self.simulation.saveState('output.xml')
-            
-        #self.simulation.loadCheckpoint('checkpoint.chk')
+        self.simulation.loadCheckpoint('checkpoint.chk')
         self.simulation.step(nsteps)  
+        save_lastsnapshot(self.simulation, "prod")
 
 if __name__ == "__main__":
+    # TODO: I should make this code take a md control input externally, shouldn't I ? 
     parser = argparse.ArgumentParser(description='Run molecular dynamics simulations using OpenMM.')
     parser.add_argument('filename', type=str, help='Input PDB file')
     args = parser.parse_args()
@@ -126,4 +131,4 @@ if __name__ == "__main__":
     runner.add_reporters()
     runner.minimise()
     runner.equilibriate()
-    runner.nvt_production()
+    #runner.nvt_production()
