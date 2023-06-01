@@ -23,6 +23,10 @@ class Runner():
         self.modeller = Modeller(self.pdb.topology, self.pdb.positions)
         self.watermodel = 'tip3p'
 
+        # TODO: these values should be set via **kwargs in __init__
+        self.nvt_eq_mdsteps = 100
+        self.npt_eq_mdsteps = 100
+
     @staticmethod
     def check_openmm_version() -> None:
         required_version = "8.0"
@@ -36,10 +40,10 @@ class Runner():
         print('Adding solvent...')
         self.modeller.addSolvent(forcefield=self.forcefield, 
                                  model=self.watermodel, 
-                                 padding=1*nanometer, 
-                                 ionicStrength=1*molar,
-                                 neutralize=True)
-                                    #boxShape='dodecahedron' # over openmm 8.0 
+                                 padding=1.0*nanometer, 
+                                 ionicStrength=0*molar, # NOTE: No IonicStrength. Just nutralize the system. 
+                                 neutralize=True,
+                                 boxShape='cube') # 'dodecahedron' is over openmm 8.0 
         
         print('System building...')
         self.system = self.forcefield.createSystem(self.modeller.topology,
@@ -47,7 +51,7 @@ class Runner():
                                                    nonbondedCutoff=1*nanometer,
                                                    constraints=HBonds)
         
-        self.integrator = LangevinMiddleIntegrator(300*kelvin, 1/picosecond, 0.004*picoseconds)
+        self.integrator = LangevinMiddleIntegrator(300*kelvin, 1/picosecond, 0.002*picoseconds)
         # ^ integrator must be defined before creating simulation object that takes it.
         #   For clarity, I redefine an integrator in the function of `equilibriate` because thermostat is used at this point.
         self.simulation = Simulation(self.modeller.topology, self.system, self.integrator)
@@ -94,12 +98,12 @@ class Runner():
 
     def equilibriate(self) -> None:    
         print('Equilibration step via NVT...')
-        nvtmdsteps=500
-        self.simulation.step(nvtmdsteps)
+        #self.nvt_eq_mdsteps=50000
+        self.simulation.step(self.nvt_eq_mdsteps)
         save_lastsnapshot(self.simulation, "nvt_eq")
         
         print('Equilibration step via NPT...')
-        nptmdsteps=1000
+        #self.npt_eq_mdsteps=50000 # 100 ps
         self.barostat = MonteCarloBarostat(1.0*bar, 300.0*kelvin, 25) 
         self.system.addForce(self.barostat)
         
@@ -108,20 +112,26 @@ class Runner():
         # > "if the System or Forces are then modified, the Context does not see the changes."
         # http://docs.openmm.org/7.2.0/api-python/generated/simtk.openmm.openmm.Context.html#simtk.openmm.openmm.Context.reinitialize
 
-        self.simulation.step(nptmdsteps)
+        self.simulation.step(self.npt_eq_mdsteps)
         save_lastsnapshot(self.simulation, "npt_eq")
 
     #TODO: abstract this function for NPT NVT ensemble. 
-    def nvt_production(self, nsteps=1000, is_xml_output=True) -> None:
+    def production(self, nsteps=1000, ensemble='npt', is_xml_output=True) -> None:
         print('Production run...')
         if is_xml_output: # We often do not want all the data that is too large, so this option turns off the full output.
             self.simulation.saveState('output.xml')
         self.simulation.loadCheckpoint('checkpoint.chk')
+
+        if ensemble == "nvt":
+            #TODO: Initialize NVT simulation here.
+            ...
+
         self.simulation.step(nsteps)  
         save_lastsnapshot(self.simulation, "prod")
 
 if __name__ == "__main__":
     # TODO: I should make this code take a md control input externally, shouldn't I ? 
+
     parser = argparse.ArgumentParser(description='Run molecular dynamics simulations using OpenMM.')
     parser.add_argument('filename', type=str, help='Input PDB file')
     args = parser.parse_args()
