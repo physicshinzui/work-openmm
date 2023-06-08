@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 from openmm.app import *
 from openmm import *
-from openmm.unit import *
+from openmm import unit
+
 import openmm
 from sys import stdout
 import sys
@@ -40,18 +41,18 @@ class Runner():
         print('Adding solvent...')
         self.modeller.addSolvent(forcefield=self.forcefield, 
                                  model=self.watermodel, 
-                                 padding=1.0*nanometer, 
-                                 ionicStrength=0*molar, # NOTE: No IonicStrength. Just nutralize the system. 
+                                 padding=1.0*unit.nanometer, 
+                                 ionicStrength=0*unit.molar, # NOTE: No IonicStrength. Just nutralize the system. 
                                  neutralize=True,
                                  boxShape='cube') # 'dodecahedron' is over openmm 8.0 
         
         print('System building...')
         self.system = self.forcefield.createSystem(self.modeller.topology,
                                                    nonbondedMethod=PME, 
-                                                   nonbondedCutoff=1*nanometer,
+                                                   nonbondedCutoff=1*unit.nanometer,
                                                    constraints=HBonds)
         
-        self.integrator = LangevinMiddleIntegrator(300*kelvin, 1/picosecond, 0.002*picoseconds)
+        self.integrator = LangevinMiddleIntegrator(300*unit.kelvin, 1/unit.picosecond, 0.002*unit.picoseconds)
         # ^ integrator must be defined before creating simulation object that takes it.
         #   For clarity, I redefine an integrator in the function of `equilibriate` because thermostat is used at this point.
         self.simulation = Simulation(self.modeller.topology, self.system, self.integrator)
@@ -104,7 +105,7 @@ class Runner():
         
         print('Equilibration step via NPT...')
         #self.npt_eq_mdsteps=50000 # 100 ps
-        self.barostat = MonteCarloBarostat(1.0*bar, 300.0*kelvin, 25) 
+        self.barostat = MonteCarloBarostat(1.0*unit.bar, 300.0*unit.kelvin, 25) 
         self.system.addForce(self.barostat)
         
         self.simulation.context.reinitialize(True)
