@@ -18,6 +18,27 @@ class Runner():
     def __init__(self, filename) -> None:
         self.check_openmm_version()
 
+        platforms = [openmm.Platform.getPlatform(i) for i in range(openmm.Platform.getNumPlatforms())]
+        print("Available platforms:")
+        for i, p in enumerate(platforms):
+            print(i, p.getName())
+
+        # Select the desired platform (CPU, CUDA or OpenCL)
+        #gpu_platform_name = "CPU"
+        gpu_platform_name = "CUDA"
+
+        self.gpu_platform = None
+        for p in platforms:
+            if p.getName() == gpu_platform_name:
+                self.gpu_platform = p
+
+        if not self.gpu_platform:
+            raise ValueError(f"{gpu_platform_name} platform not found.")
+
+        else:
+            print(f"Using {gpu_platform_name} platform")
+
+
         print('Loading...')
         self.pdb = PDBFile(filename)
         self.forcefield = ForceField('amber14-all.xml', 'amber14/tip3pfb.xml')
@@ -143,3 +164,12 @@ if __name__ == "__main__":
     runner.minimise()
     runner.equilibriate()
     #runner.nvt_production()
+
+
+#def test():
+# from openmm.app import *
+# from openmm import *
+# from openmm import unit
+# import openmm
+# runner = Runner("data/sample_pdb/nacl.pdb")
+
