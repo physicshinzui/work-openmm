@@ -24,8 +24,8 @@ class Runner():
             print(i, p.getName())
 
         # Select the desired platform (CPU, CUDA or OpenCL)
-        #gpu_platform_name = "CPU"
-        gpu_platform_name = "CUDA"
+        gpu_platform_name = "CPU"
+        #gpu_platform_name = "CUDA"
 
         self.gpu_platform = None
         for p in platforms:
@@ -46,8 +46,8 @@ class Runner():
         self.watermodel = 'tip3p'
 
         # TODO: these values should be set via **kwargs in __init__
-        self.nvt_eq_mdsteps = 100
-        self.npt_eq_mdsteps = 100
+        self.nvt_eq_mdsteps = 50000
+        self.npt_eq_mdsteps = 50000
 
     @staticmethod
     def check_openmm_version() -> None:
@@ -76,9 +76,15 @@ class Runner():
         self.integrator = LangevinMiddleIntegrator(300*unit.kelvin, 1/unit.picosecond, 0.002*unit.picoseconds)
         # ^ integrator must be defined before creating simulation object that takes it.
         #   For clarity, I redefine an integrator in the function of `equilibriate` because thermostat is used at this point.
+        
+        # properties = {'CudaPrecision': 'mixed'}
         self.simulation = Simulation(self.modeller.topology, self.system, self.integrator)
         self.simulation.context.setPositions(self.modeller.positions)  
         # NOTE: simulation.context is firstly created here. 
+
+        # To enable GPU
+        used_platform = self.simulation.context.getPlatform().getName()
+        print("DBG: Used platform stored in context: ", used_platform)
 
     def add_reporters(self, mdsteps=1000, logperiod=10, dcdperiod=10, forceperiod=10) -> None:
         print("Setting reporters...")
@@ -98,6 +104,7 @@ class Runner():
         self.simulation.reporters.append(StateDataReporter("md.csv", 
                                                     reportInterval=logperiod, 
                                                     time=True,
+                                                    speed=True,
                                                     totalEnergy=True, 
                                                     kineticEnergy=True, 
                                                     potentialEnergy=True, 
@@ -120,12 +127,10 @@ class Runner():
 
     def equilibriate(self) -> None:    
         print('Equilibration step via NVT...')
-        #self.nvt_eq_mdsteps=50000
         self.simulation.step(self.nvt_eq_mdsteps)
         save_lastsnapshot(self.simulation, "nvt_eq")
         
         print('Equilibration step via NPT...')
-        #self.npt_eq_mdsteps=50000 # 100 ps
         self.barostat = MonteCarloBarostat(1.0*unit.bar, 300.0*unit.kelvin, 25) 
         self.system.addForce(self.barostat)
         
